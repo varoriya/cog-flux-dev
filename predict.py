@@ -160,4 +160,76 @@ class Predictor(BasePredictor):
             default=False,
         ),
     ) -> List[Path]:
-        # ส่วนที่เหลือเหมือนโค้ดต้นฉบับ
+   """Run a single prediction on the model"""
+        if seed is None:
+            seed = int.from_bytes(os.urandom(2), "big")
+        print(f"Using seed: {seed}")
+
+        width, height = self.aspect_ratio_to_width_height(aspect_ratio)
+        max_sequence_length=512
+
+        flux_kwargs = {"width": width, "height": height}
+        print(f"Prompt: {prompt}")
+        device = self.txt2img_pipe.device
+
+        if image:
+            pipe = self.img2img_pipe
+            print("img2img mode")
+            init_image = self.get_image(image)
+            width = init_image.shape[-1]
+            height = init_image.shape[-2]
+            print(f"Input image size: {width}x{height}")
+            # Calculate the scaling factor if the image exceeds MAX_IMAGE_SIZE
+            scale = min(MAX_IMAGE_SIZE / width, MAX_IMAGE_SIZE / height, 1)
+            if scale < 1:
+                width = int(width * scale)
+                height = int(height * scale)
+                print(f"Scaling image down to {width}x{height}")
+
+            # Round image width and height to nearest multiple of 16
+            width = self.make_multiple_of_16(width)
+            height = self.make_multiple_of_16(height)
+            print(f"Input image size set to: {width}x{height}")
+            # Resize
+            init_image = init_image.to(device)
+            init_image = torch.nn.functional.interpolate(init_image, (height, width))
+            init_image = init_image.to(torch.bfloat16)
+            # Set params
+            flux_kwargs["image"] = init_image
+            flux_kwargs["strength"] = prompt_strength
+        else:
+            print("txt2img mode")
+            pipe = self.txt2img_pipe
+
+        generator = torch.Generator("cuda").manual_seed(seed)
+
+        common_args = {
+            "prompt": [prompt] * num_outputs,
+            "guidance_scale": guidance_scale,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+            "max_sequence_length": max_sequence_length,
+            "output_type": "pil"
+        }
+
+        output = pipe(**common_args, **flux_kwargs)
+
+        if not disable_safety_checker:
+            _, has_nsfw_content = self.run_safety_checker(output.images)
+
+        output_paths = []
+        for i, image in enumerate(output.images):
+            if not disable_safety_checker and has_nsfw_content[i]:
+                print(f"NSFW content detected in image {i}")
+                continue
+            output_path = f"/tmp/out-{i}.{output_format}"
+            if output_format != 'png':
+                image.save(output_path, quality=output_quality, optimize=True)
+            else:
+                image.save(output_path)
+            output_paths.append(Path(output_path))
+
+        if len(output_paths) == 0:
+            raise Exception("NSFW content detected. Try running it again, or try a different prompt.")
+
+        return output_paths
