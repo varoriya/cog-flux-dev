@@ -1,0 +1,38 @@
+name: Push to Replicate
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: 'Enter the model name, like "username/model-name"'
+        required: true
+
+jobs:
+  push_to_replicate:
+    name: Push to Replicate
+    runs-on: ubuntu-latest
+
+    steps:
+    # เพิ่มพื้นที่ดิสก์
+    - name: Free Disk Space
+      uses: jlumbroso/free-disk-space@v1.3.1
+      with:
+        tool-cache: false
+        docker-images: false
+
+    # Checkout repository
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # Setup Cog environment
+    - name: Setup Cog
+      uses: replicate/setup-cog@v2
+      with:
+        token: ${{ secrets.REPLICATE_API_TOKEN }}
+
+    # Push the model to Replicate
+    - name: Push to Replicate
+      run: cog push r8.im/${{ inputs.model_name }}
