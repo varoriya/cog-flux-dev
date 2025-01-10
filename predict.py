@@ -160,7 +160,7 @@ class Predictor(BasePredictor):
             default=False,
         ),
     ) -> List[Path]:
-   """Run a single prediction on the model"""
+        """Run a single prediction on the model"""
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
@@ -233,3 +233,4 @@ class Predictor(BasePredictor):
             raise Exception("NSFW content detected. Try running it again, or try a different prompt.")
 
         return output_paths
+    
